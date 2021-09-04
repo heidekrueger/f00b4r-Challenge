@@ -9,7 +9,7 @@ The goal of the challenge is finding the probability distribtuion of terminal st
 
 The challenge is that some states of the chain are periodic (but not the entire chain is!), so we can't just simulate transitions until everything is converged. However, at every time step, some share of the "population" will reach terminal states.
 
-In fact, we want to calculate (terminal parts of) the aymptotic state distribution $x$, where
+In fact, we want to calculate (terminal parts of) the asymptotic state distribution $x$, where
 $$x = \sum_{t=0}^\infty  v^T A^t = v^T \sum_{t=0}^\infty A^t$$
 
 We can rewrite $A$ as a stochastic matrix by normalizing it's rows to 1. That way, all EVs of $A$ will be between 0 and 1 and we can apply the geometric power series identity:
