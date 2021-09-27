@@ -282,7 +282,7 @@ class Graph:
         marked_vertices = set()
         marked_edges = copy(matching)
 
-        print(f"Looking for a new augmented path. Matching {matching} free nodes {free_vertices}")
+        #print(f"Looking for a new augmented path. Matching {matching} free nodes {free_vertices}")
 
         forest = Forest()
         for fv in free_vertices:
@@ -296,18 +296,18 @@ class Graph:
             if not forest.distances[v] % 2     # with even distance to its root
             }
 
-        print(f"\t unmarked even vertices: {unmarked_even_vertices}")
+        #print(f"\t unmarked even vertices: {unmarked_even_vertices}")
 
         while unmarked_even_vertices:
             v = unmarked_even_vertices.pop()
             print("\t Trying Vertex: " + str(v) + " with root " + str(forest.roots[v]))
             
             unmarked_edges = {e for e in self.edges.difference(marked_edges) if v in e}
-            print(f"\t\tumarked edges: {unmarked_edges}")
+            #print(f"\t\tumarked edges: {unmarked_edges}")
             while unmarked_edges:
                 e = unmarked_edges.pop()
                 w = e.other(v)
-                print(f"\t\tTrying edge {e}")
+                #print(f"\t\tTrying edge {e}")
 
                 if not w in forest.vertices:
                     
@@ -316,7 +316,7 @@ class Graph:
                     x = matched_edge.other(w)
                     forest.add_edge(v,w)
                     forest.add_edge(w,x)
-                    print(f"\t\t\t{w} is matched, adding {e} and {Edge(w,x)}")
+                    #print(f"\t\t\t{w} is matched, adding {e} and {Edge(w,x)}")
                 else:
                     # w is in the forest
                     if not forest.distances[w] % 2:
@@ -329,39 +329,188 @@ class Graph:
                             path = forest.get_root_path(v) # v --> root(v)
                             path.reverse()
                             path += forest.get_root_path(w) # w --> root(w)
-                            print(f"\t\t\t {w} is in different, tree. Augmenting along {path}.")
+                            #print(f"\t\t\t {w} is in different, tree. Augmenting along {path}.")
                             return path
                         else:
                             # v and w are in same tree
                             ## We found a blossom! --> contract it, look for path in contracted graph
-                            
-                            # blossom is formed by (v,w) and path (v --> common_root(v,w) --> w)
-                            blossom = set([Edge(v,w)]) #TODO: create blossom object here!
-                            # to get the second path, we take both path's to the root, then cut
-                            # of the (shared) stem until the tree branches:
-                            edges_v = forest.get_root_path_edges(v)
-                            edges_w = forest.get_root_path_edges(w)
-                            v_to_w = edges_v.symmetric_difference(edges_w)
-                            blossom.update(v_to_w)
-                            print(f'\t\t\t {w} is in same tree. Found a blossom... {blossom}')
-
-                            c_graph, c_matching, c_map = contract_blossom(graph,blossom, v,  matching)
-                            print(f'\t\t\t{c_graph, c_matching, c_map}')
-                            c_path = find_augmenting_path(c_graph, c_matching)
-
+                            blossom = Blossom(self, matching, v, w, forest) 
+                            #print(f'\t\t\t {w} is in same tree. Found a blossom... {blossom}')
+                            c_graph, c_matching = blossom.contract()
+                            #print(f'\t\t\t{c_graph, c_matching}')
+                            c_path = c_graph.find_augmenting_path(c_matching)
                             if c_path is not None:
-                                return lift_path(c_path, c_map, blossom, v, graph)
+                                return blossom.lift_path(c_path)
                             
                             # this should be unreachable
                             print("No augmenting path found in contracted graph. Continuing...")
 
-                    print(f"\t\t\t{w} is in the tree but has odd distance. Skipping.")
+                    #print(f"\t\t\t{w} is in the tree but has odd distance. Skipping.")
                 marked_edges.add(e)
             marked_vertices.add(v)
         
-        print(f"No more vertices. No augmenting path found.")
+        #print(f"No more vertices. No augmenting path found.")
         # no augmenting path exists
         return None
+
+
+class Blossom:
+    def __init__(self, parent_graph, matching, v, w, forest):
+        """"
+        Initializes a new Blossom in parent_graph found via root v and other
+        vertex w in `forest` expansion.
+
+        parent_graph: Graph (the graph that the blossom is embedded in)
+        v: the root of the blossom
+        w: other vertex in blossom, found via forest expansion
+        forest: the forest through which v,w have been found
+        matching: the matching determining which edges of Blossom are coverd
+        """
+        self.parent_graph = parent_graph
+        self.matching = matching # matching in parent_graph
+
+        self.root = v
+        # blossom is formed by (v,w) and path (v --> common_root_in_forest(v,w) --> w)
+        self.edges = set([Edge(v,w)])
+        # to get the second path, we take both path's to the root,
+        # then cut off the (shared) stem until the tree branches:
+        edges_v = forest.get_root_path_edges(v)
+        edges_w = forest.get_root_path_edges(w)
+        v_to_w = edges_v.symmetric_difference(edges_w)
+        self.edges.update(v_to_w)
+
+
+
+        self.vertices = {e.v for e in self.edges}
+        self.vertices.update({e.w for e in self.edges})
+
+
+        # edges that go in/out of the blossom
+        self.neighborhood_edges = {
+            e
+            for e in self.parent_graph.edges
+            if (e.v in self.vertices) != (e.w in self.vertices)
+        }
+
+        self.contracted_index = None
+
+    def path_to_root(w):
+        """Returns:
+            path: a list of vertices  odd length, starting with a matched
+            edge from w, ending in root
+        """
+        path = []
+        while w != self.root:
+            path.add(w)
+            # w is in two blossom edges, a matched one and an unmatched one
+            w_edges = {e for e in blossom if w in e}
+            # NOTE: length refers to vertices, not edges!
+            # odd number of vertices --> even number of edges!
+            if len(path) % 2:
+                # length is odd --> next edge is matched
+                e = w_edges.intersection(matching).pop()
+            else:
+                # even --> next edge is unmatched
+                e = w_edges.difference(matching).pop()
+            # go to next vertex
+            w = e.other(w)
+        #finally add the root
+        path.add(w)
+        return path
+
+    def contract(self):
+        """Returns contracted graph, and matching,
+        where the blossom is replaced by a single node, as well as information
+        necessary to undo the operation.
+        """
+        # size of original graph
+        n = len(self.parent_graph.vertices)
+        # choose a new unique index of blossom node
+        self.contracted_index = max(self.parent_graph.vertices) + 1
+        c_vertices = self.parent_graph.vertices \
+                           .difference(self.vertices) \
+                           .union({self.contracted_index})
+
+        n_c = len(c_vertices)
+
+        # make edges in contracted graph
+        # replace all "neighborhood" edges of the blossom,
+        # remove all "internal" edges of the blossom
+        c_edges = copy(self.parent_graph.edges)
+        for e in self.parent_graph.edges:
+            if e in self.edges:
+                # internal edge of blossom
+                c_edges.remove(e)
+            if e in self.neighborhood_edges:
+                # replace e
+                c_edges.remove(e)
+                if e.v in self.vertices:
+                    c_edges.add(Edge(self.contracted_index, e.w))
+                else:
+                    c_edges.add(Edge(self.contracted_index, e.v))
+
+        c_graph = Graph(c_vertices, c_edges)
+
+        # matching in contracted graph, is original, minus matched edges
+        # in blossom. A matched edge into the root may still need to be replaced.
+        c_matching = self.matching.difference(self.edges)
+        for e in c_matching:
+            if self.root in e:
+                c_matching.remove(e)
+                c_matching.add(Edge(self.root, e.other(self.root)))
+
+        return c_graph, c_matching
+
+    def lift_path(self, c_path):
+        """
+        Given an augmented path c_path in the contraction c_graph of this blossom,
+        return the lifted augmented path in the blossom's parent_graph.
+        """
+        if c_path is None:
+            # Case 0: no augmenting path in contracted graph -->
+            #         none in original either
+            path =  None
+
+        if self.root not in c_path or \
+                self.root == c_path[0] or self.root == c_path[-1]:
+            # Case 1: Blossom not in c_path or an (unmatched) leave of it
+            # c_path is [x, ..., y] or [x, ..., b] or [b, ... y]
+            # we simply replace b by its root v
+            # We simply replace the blossom by its root (if at all)
+            path = [v if v != self.contracted_index else self.root for v in c_path]
+        else:
+            # Case 2: path goes 'through' the contracted blossom
+            # c_path is [x, ... b, ... y]
+            # with connections (x' --> b --> y')
+            # then one of these edges contains x, the other contains a different vertex w in b
+            # we follow the blossom along the __matched__ edge of w until we reach v.
+            path = []
+            for i,v in enumerate(c_path):
+                if v != self.contracted_index:
+                    path.append(v)
+                else:
+                    # going through blossom!
+                    in_neighbor = c_path[i-1]
+                    out_neighbor = c_path[i+1]
+
+                    in_edge  = {e for e in self.neighborhood_edges if in_neighbor  in e}.pop()
+                    out_edge = {e for e in self.neighborhood_edges if out_neighbor in e}.pop()
+                    # one of these must be root
+                    if in_edge.other(in_neighbor) == self.root:
+                        entering_through_root = True
+                        w = out_edge.other(out_neighbor)
+                    else:
+                        #exiting through route
+                        entering_through_root = False
+                        w = in_edge.other(in_neighbor)
+                    path_in_blossom = blossom.path_to_root(w)
+                    if entering_through_root:
+                        path_in_blossom.reverse()
+                    path += path_in_blossom
+
+        #print(f"lifted path: {path}")
+        return path
+    
 
 
 
@@ -414,96 +563,6 @@ class Forest:
 
 
 
-
-
-
-
-
-class Blossom:
-    def __init__(edges, root, matching):
-        self.root = root
-        self.internal_edges = edges
-        self.vertices = reduce(set().union, [e.nodes for e in internal_edges])
-        self.external_edges = set()
-        self.neighborhood = set() # neighborhood in original graph
-
-        self.matching = internal_edges.intersection(matching)
-        self.contracted_index  = None
-
-    def path_to_root(w):
-        """Returns:
-            path: a list of odd length, starting in w ending in root
-        """
-        path = []
-        # vertex iteration
-        while w != self.root:
-            # w is in two blossom edges, a matched one and an unmatched one
-            w_edges = {e for e in blossom if w in e}
-            if not len(path) % 2:
-                # length is even --> next edge is matched
-                e = w_edges.intersection(matching).pop()
-            else:
-                # even --> next edge is unmatched
-                e = w_edges.difference(matching).pop()
-            
-            # go to next vertex
-            path.add(e.other(w))
-            w = path[-1]
-
-        #finally add the root
-        path.add(root)
-        return path
-
-
-def lift_path(c_path, c_to_o, blossom, blossom_root, graph):
-    """given an augmented path c_path in a contracted graph c_graph,
-       lift this path back to an augmenting path in the original `graph`.
-    """
-    if c_path is None:
-        # Case 0: no augmenting path in contracted graph -->
-        #         none in original either
-        path =  None
-
-    if blossom_root not in c_path or \
-            blossom_root == c_path[0] or blossom_root == c_path[-1]:
-        # Case 1: Blossom not in c_path or an (unmatched) leave of it
-        # c_path is [x, ..., y] or [x, ..., b] or [b, ... y]
-        # we simply replace b by its root v
-        # We simply replace the blossom by its root (if at all)
-        path = [c_to_o[v] for v in c_path]
-    else:
-        # Case 2: path goes 'through' the contracted blossom
-        # c_path is [x, ... b, ... y]
-        # with connections (x' --> b --> y')
-        # then one of these edges contains x, the other contains a different vertex w in b
-        # we follow the blossom along the __matched__ edge of w until we reach v.
-        path =  [c_to_o[v] for v in c_path]
-    
-    print(f"lifted path: {path}")
-    return path
-    
-
-
-def contract_blossom(graph, blossom, blossom_root, matching):
-    """contracts all nodes in blossom into a single node, with the same outgoing edges as blossom_root"""
-    blossom_nodes = {e[0] for e in blossom}
-    # size of original graph
-    n = len(graph)
-    contracted_nodes = sorted(set(range(n))
-                              .difference(blossom_nodes)
-                              .union({blossom_root}))
-    n_c = len(contracted_nodes)
-    # mapping contracted id to original id
-    c_to_o = {c:o for c,o in enumerate(contracted_nodes)}
-    o_to_c = {o:c for c,o in enumerate(contracted_nodes)}
-
-    graph_c = np.array([
-        graph[row][contracted_nodes] 
-        for row in contracted_nodes])
-    matching_c = matching.difference(blossom)
-    matching_c = {Edge(o_to_c[v1], o_to_c[v2]) for (v1, v2) in matching_c}
-
-    return graph_c, matching_c, c_to_o
 
 
 
