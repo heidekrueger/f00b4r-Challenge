@@ -195,7 +195,7 @@ class Matching(set):
                 an augmenting path. The first and last entry must be free vertices,
                 and total length must be even"""
         
-        print("augmenting along " + str(path))
+        #print("augmenting along " + str(path))
         # update edges in matching
         # making sure each edge is described by lower numbered vertex first
         for i in range(0,len(path), 2):
@@ -204,7 +204,7 @@ class Matching(set):
             if i+2 < len(path):
                 self.remove(Edge(path[i+1], path[i+2]))
 
-        print("\tMatching updated:" +  str(self))
+        #print("\tMatching updated:" +  str(self))
 
 class Graph:
     def __init__(self, vertices, edges):
@@ -300,7 +300,7 @@ class Graph:
 
         while unmarked_even_vertices:
             v = unmarked_even_vertices.pop()
-            print("\t Trying Vertex: " + str(v) + " with root " + str(forest.roots[v]))
+            #print("\t Trying Vertex: " + str(v) + " with root " + str(forest.roots[v]))
             
             unmarked_edges = {e for e in self.edges.difference(marked_edges) if v in e}
             #print(f"\t\tumarked edges: {unmarked_edges}")
@@ -316,6 +316,8 @@ class Graph:
                     x = matched_edge.other(w)
                     forest.add_edge(v,w)
                     forest.add_edge(w,x)
+                    if x not in marked_vertices:
+                        unmarked_even_vertices.add(x)
                     #print(f"\t\t\t{w} is matched, adding {e} and {Edge(w,x)}")
                 else:
                     # w is in the forest
@@ -343,7 +345,7 @@ class Graph:
                                 return blossom.lift_path(c_path)
                             
                             # this should be unreachable
-                            print("No augmenting path found in contracted graph. Continuing...")
+                            #print("No augmenting path found in contracted graph. Continuing...")
 
                     #print(f"\t\t\t{w} is in the tree but has odd distance. Skipping.")
                 marked_edges.add(e)
