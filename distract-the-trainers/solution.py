@@ -454,6 +454,8 @@ class Blossom:
             #         none in original either
             path =  None
 
+        # TODO: issue is here! we can also have the case where blossom is terminus but 
+        # we do NOT enter through the root!!
         if self.root not in c_path or \
                 self.root == c_path[0] or self.root == c_path[-1]:
             # Case 1: Blossom not in c_path or an (unmatched) leave of it
@@ -546,6 +548,18 @@ class Forest:
 
 
 
+
+
+
+## Large Graph Example from TUM
+# https://algorithms.discrete.ma.tum.de/graph-algorithms/matchings-blossom-algorithm/index_en.html
+V = list(range(1, 16))
+E = {Edge(i,j) for (i,j) in [
+  (15,1), (1,0), (0,13), (13,2), (2,3), (1,4), (4,5), (4,3), (3,5), (2,6), (6,7), (7,14), (14,9), (9,10), (10,12), (11,12), (11,8), (12,8), (8,7)                           
+  ]}
+
+g = Graph(V,E)
+g.find_maximum_matching()
 
 
 
