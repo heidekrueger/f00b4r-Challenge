@@ -56,6 +56,7 @@ def solution(banana_list):
     # each matching edge covers 2 vertices
     return n - 2* len(matching)
 
+
 def has_banana_edge(b1, b2):
     """
     For two vertices b1, b2 (represented by their banana-number),
@@ -120,12 +121,11 @@ def has_banana_edge(b1, b2):
 
 class Edge:
     """Abstraction for an Edge (v,w) of a graph."""
-    def __init__(self, v,w, directed = False):
-        if not directed:
-            v,w = min(v,w), max(v,w)
+    def __init__(self, v,w):
+
+        v,w = min(v,w), max(v,w)
         self.v = v
         self.w = w
-        self.directed = directed
 
     def other(self, v):
         if v == self.v:
@@ -135,10 +135,8 @@ class Edge:
         raise ValueError("inavalid vertex.")
 
     def __str__(self):
-        if not self.directed:
-            return str((self.v, self.w))
-        else:
-            return "(" + str(self.v) + "->" + str(self.w) + ")"
+        return str((self.v, self.w))
+
 
     def __repr__(self):
         	return self.__str__()
@@ -161,13 +159,7 @@ class Edge:
     def __contains__(self, v):
         return v in self.nodes()
 
-    def _directed_equal(self, v, w):
-        """checks whether this edge is equal to directed edge (v,w)"""
-        return (self.v, self.w) == (other_v, other_w)
-
     def __eq__(self, other):
-        if self.directed:
-            return self._directed_equal(other.v, other.w)
         return self.nodes() == other.nodes()
 
     def undirected(self):
@@ -212,21 +204,10 @@ class Graph:
         self.vertices = set(vertices)
         self.edges = set(edges)
 
-        edges_directed = [e.directed for e in edges]
-        if all(edges_directed):
-            self.directed = True
-        elif not any(edges_directed):
-            self.directed = False
-        else:
-            raise ValueError("got a mix of directed and undirected edges.")
 
     def neighbors(self, v):
         """returns the (out-)neighborhood of v in the graph"""
-        if not self.directed:
-            return {e.other(v) for e in self.edges if v in e}
-        else:
-            # only use edges going out of v
-            return {e.other(v) for e in self.edges if e.v == v}
+        return {e.other(v) for e in self.edges if v in e}
 
             
     def node_edges(self, v):
