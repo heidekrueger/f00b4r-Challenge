@@ -26,7 +26,6 @@ on the Blossom Algorithm for maximum matchings in general graphs.
 """
 
 from fractions import gcd
-import numpy as np
 from copy import copy
 from functools import reduce
 
@@ -187,7 +186,6 @@ class Matching(set):
                 an augmenting path. The first and last entry must be free vertices,
                 and total length must be even"""
         
-        #print("augmenting along " + str(path))
         # update edges in matching
         # making sure each edge is described by lower numbered vertex first
         for i in range(0,len(path), 2):
@@ -224,7 +222,7 @@ class Graph:
 
         We will use Edmond's Blossom algorithm to find the matching.
         """
-
+        #print(f"finding maximum matching in {self.edges}")
         # Start with empty matching
         matching = Matching(set())
         free_vertices = self.vertices
@@ -318,10 +316,12 @@ class Graph:
                             # v and w are in same tree
                             ## We found a blossom! --> contract it, look for path in contracted graph
                             blossom = Blossom(self, matching, v, w, forest) 
-                            #print(f'\t\t\t {w} is in same tree. Found a blossom... {blossom}')
+                            #print(f'\t\t\t {w} is in same tree. Found a blossom... {blossom.vertices}')
                             c_graph, c_matching = blossom.contract()
-                            #print(f'\t\t\t{c_graph, c_matching}')
+                            #print(f'\t\t\t contracted blossom into new node {blossom.contracted_index}')
+                            #print(f'\t\t\tcontracted graph: {c_graph.vertices, c_graph.edges, c_matching}')
                             c_path = c_graph.find_augmenting_path(c_matching)
+                            #print(f'\t\t\t contracted path: {c_path}')
                             if c_path is not None:
                                 return blossom.lift_path(c_path)
                             
@@ -336,6 +336,49 @@ class Graph:
         # no augmenting path exists
         return None
 
+class Forest:
+    """A tree, represented by its vertices,
+    and ordered (!) edges (root,descendent),
+    i.e. every vertex in the tree may be the
+    root of multiple edges but descendent in at most
+    one edge. """ 
+    def __init__(self):
+        self.vertices = set()
+        self.edges = set()
+        self.roots = {} #dict matching vertex to its root
+        self.distances = {}
+        self.parents = {}
+
+    def add_root(self, root):
+        """adds a new tree to the forest, starting at root"""
+        if root in self.vertices:
+            raise ValueError()
+        self.vertices.add(root)
+        self.distances[root] = 0
+        self.roots[root] = root
+    
+    def add_edge(self, parent, child):
+        if parent not in self.vertices or child in self.vertices:
+            raise ValueError()
+        self.vertices.add(child)
+        self.edges.add((parent, child))
+        self.distances[child] = self.distances[parent] + 1
+        self.roots[child] = self.roots[parent]
+        self.parents[child] = parent
+
+    def get_root_path(self, vertex):
+        "returns the path from the vertex to its roow"
+        root = self.roots[vertex]
+        path = [vertex]
+        while vertex != root:
+            vertex = self.parents[vertex]
+            path.append(vertex)
+        return path
+
+    def get_root_path_edges(self, vertex):
+        "returns set of edges along root path"
+        rp = self.get_root_path(vertex)
+        return {Edge(rp[i], rp[i+1]) for i in range(self.distances[vertex])}
 
 class Blossom:
     def __init__(self, parent_graph, matching, v, w, forest):
@@ -377,28 +420,28 @@ class Blossom:
 
         self.contracted_index = None
 
-    def path_to_root(w):
+    def path_to_root(self,w):
         """Returns:
             path: a list of vertices  odd length, starting with a matched
             edge from w, ending in root
         """
         path = []
         while w != self.root:
-            path.add(w)
+            path.append(w)
             # w is in two blossom edges, a matched one and an unmatched one
-            w_edges = {e for e in blossom if w in e}
+            w_edges = {e for e in self.edges if w in e}
             # NOTE: length refers to vertices, not edges!
             # odd number of vertices --> even number of edges!
             if len(path) % 2:
                 # length is odd --> next edge is matched
-                e = w_edges.intersection(matching).pop()
+                e = w_edges.intersection(self.matching).pop()
             else:
                 # even --> next edge is unmatched
-                e = w_edges.difference(matching).pop()
+                e = w_edges.difference(self.matching).pop()
             # go to next vertex
             w = e.other(w)
         #finally add the root
-        path.add(w)
+        path.append(w)
         return path
 
     def contract(self):
@@ -453,16 +496,25 @@ class Blossom:
             # Case 0: no augmenting path in contracted graph -->
             #         none in original either
             path =  None
-
-        # TODO: issue is here! we can also have the case where blossom is terminus but 
-        # we do NOT enter through the root!!
-        if self.root not in c_path or \
-                self.root == c_path[0] or self.root == c_path[-1]:
-            # Case 1: Blossom not in c_path or an (unmatched) leave of it
-            # c_path is [x, ..., y] or [x, ..., b] or [b, ... y]
-            # we simply replace b by its root v
-            # We simply replace the blossom by its root (if at all)
-            path = [v if v != self.contracted_index else self.root for v in c_path]
+        elif self.contracted_index not in c_path:
+            path = c_path
+        elif self.contracted_index in [c_path[0], c_path[-1]]:
+            # Case: Blossom is beginning or end of the path. 
+            # w.l.o.g. assume it's at the end:
+            if self.contracted_index == c_path[0]:
+                c_path.reverse()
+            # start by adding all non-blossom nodes
+            path = c_path[:-1]
+            # add the blossom: choose any edge that goes into it from 
+            # previous node in path
+            in_edge = {e for e in self.neighborhood_edges if c_path[-2] in e}.pop()
+            w = in_edge.other(c_path[-2]) # 'first' node in edge
+            path += self.path_to_root(w)
+            # # Case 1: Blossom not in c_path or an (unmatched) leave of it
+            # # c_path is [x, ..., y] or [x, ..., b] or [b, ... y]
+            # # we simply replace b by its root v
+            # # We simply replace the blossom by its root (if at all)
+            # path = [v if v != self.contracted_index else self.root for v in c_path]
         else:
             # Case 2: path goes 'through' the contracted blossom
             # c_path is [x, ... b, ... y]
@@ -500,60 +552,12 @@ class Blossom:
 
 
 
-class Forest:
-    """A tree, represented by its vertices,
-    and ordered (!) edges (root,descendent),
-    i.e. every vertex in the tree may be the
-    root of multiple edges but descendent in at most
-    one edge. """ 
-    def __init__(self):
-        self.vertices = set()
-        self.edges = set()
-        self.roots = {} #dict matching vertex to its root
-        self.distances = {}
-        self.parents = {}
-
-    def add_root(self, root):
-        """adds a new tree to the forest, starting at root"""
-        if root in self.vertices:
-            raise ValueError()
-        self.vertices.add(root)
-        self.distances[root] = 0
-        self.roots[root] = root
-    
-    def add_edge(self, parent, child):
-        if parent not in self.vertices or child in self.vertices:
-            raise ValueError()
-        self.vertices.add(child)
-        self.edges.add((parent, child))
-        self.distances[child] = self.distances[parent] + 1
-        self.roots[child] = self.roots[parent]
-        self.parents[child] = parent
-
-    def get_root_path(self, vertex):
-        "returns the path from the vertex to its roow"
-        root = self.roots[vertex]
-        path = [vertex]
-        while vertex != root:
-            vertex = self.parents[vertex]
-            path.append(vertex)
-        return path
-
-    def get_root_path_edges(self, vertex):
-        "returns set of edges along root path"
-        rp = self.get_root_path(vertex)
-        return {Edge(rp[i], rp[i+1]) for i in range(self.distances[vertex])}
-
-
-
-
-
 
 
 
 ## Large Graph Example from TUM
 # https://algorithms.discrete.ma.tum.de/graph-algorithms/matchings-blossom-algorithm/index_en.html
-V = list(range(1, 16))
+V = list(range(16))
 E = {Edge(i,j) for (i,j) in [
   (15,1), (1,0), (0,13), (13,2), (2,3), (1,4), (4,5), (4,3), (3,5), (2,6), (6,7), (7,14), (14,9), (9,10), (10,12), (11,12), (11,8), (12,8), (8,7)                           
   ]}
