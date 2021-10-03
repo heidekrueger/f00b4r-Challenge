@@ -1,6 +1,13 @@
 def solution(m,f):
     """
-    Solution to the bomb-baby puzzle.
+    Solution to the bomb-baby puzzle. Here, we are given some dynamical update rules,
+    a pair (m,f) could be succeeded either by (m+f,f) or (m,m+f). Given two numbers 
+    (m,f), we are tasked with finding the shortest path (in generations) to generate 
+    (m,f) from (1,1), or to determine that the outcome is impossible.
+
+    The 'real challenge' is finding an efficient implementation, in particular, avoiding
+    deep recursion stacks and 'skipping' recursion loops that can be determined a-priori to be
+    unnecessary.
     
     Args:
         m, f (str): string represenations of integers.
@@ -21,9 +28,10 @@ def solution(m,f):
     # number of accumulated generations
     n = 0 
 
-    ## Python cannot handle/optimize tail recursion, so 
-    ## to avoid hitting the maximum recursion depth, we'll
-    ## instead loop until we hit a base case:
+    ## A tail-recursive implementation with constant memory usage
+    ## is easily possible, but unfortunately Python cannot handle/optimize
+    ## tail recursion, and is still limited by maximum recursion depth.
+    ## We'll thus implement tail-recursion implicitly via a loop:
     while True:
         # The entire generation poset is symmetric,
         # so we can reduce the problem to m >= f
@@ -31,12 +39,12 @@ def solution(m,f):
         if m < f:
             m, f = f, m
 
-        ## Edge cases:    
-        # Edge case 1: Negative or zero inputs? --> impossible
+        ## Base cases:    
+        # Base case 1: Negative or zero inputs? --> impossible
         if m<1 or f<1:
             return "impossible"
 
-        # Edge case 2: (m, 1)
+        # Base case 2: (m, 1)
         # It takes (m-1) generations to generate the tuple (m, 1), i.e.
         # when always choosing the transition (m,1) -> (m+1, 1) 
         if f==1:
@@ -45,7 +53,7 @@ def solution(m,f):
         ## Recursive case: go down the tree
         # (m,f) could have been generated from (m-f, f) or (m, f-m)
         # (or their symmetries) but we know that m >= f
-        # so f-m will be <1 and we can ignore that branch
+        # so f-m will be <1 and we can ignore that branch.
 
         # As long as m will remain greater than f after the update,
         # we already know that would end up in the recursive case again
@@ -53,5 +61,5 @@ def solution(m,f):
         # once in order to avoid unnecessary iterations:
         steps = m // f
 
-        n+= steps
+        n += steps
         m -= steps * f

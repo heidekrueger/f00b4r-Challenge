@@ -1,5 +1,10 @@
 def solution(l):
-    """solution to the find-the-access code puzzle
+    """solution to the find-the-access code puzzle, which
+    is about counting triplets of numbers that divide each other.
+
+    The 'real challenge' of this test is avoiding the cubic complexity
+    of a naïve brute-force implementation. Below, I use dynamic programming
+    to do so.
     
     Args:
         l (list[int])

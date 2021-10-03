@@ -1,7 +1,10 @@
 """
 In this riddle, we need to find a matching between bunny trainers of
 maximum cardinality, such that each matched pair plays an infinite 
-loop of thumb_wrestling.
+loop of thumb_wrestling. In each thumb-wrestling round, trainers win/loose a
+certain number of bananas - the player with fewer bananas will always double 
+their bananas at the cost of the player who starts the match with more bananas.
+A match ends when both trainers have the same number of bananas available.
 
 We'll thus consider an unweighted, undirected graph G=(V,E) where the
 vertices V are the trainers and (v1,v2) is an edge iff those two trainers could be
