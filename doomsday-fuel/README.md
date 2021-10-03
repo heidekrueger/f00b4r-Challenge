@@ -7,7 +7,7 @@ This directory contains my solution attempts at the doomsday fuel challenge.
 We're given a square $n \times n$ state transition count matrix $A$, a fixed initial condition $v = \pmatrix{1, 0, \dots, 0}^T$. In the corresponding Markov-Chain, some states are terminal (marked by all-zero rows in $A$).
 The goal of the challenge is finding the probability distribtuion of terminal states given the initial state **as rational numbers**.
 
-The challenge is that some states of the chain are periodic (but not the entire chain is!), so we can't just simulate transitions until everything is converged. However, at every time step, some share of the "population" will reach terminal states.
+The challenge is that some states of the chain are periodic (But the entire chain isn't!), so we can't just simulate transitions until everything is converged. However, at every time step, some share of the "population" will reach terminal states.
 
 In fact, we want to calculate (terminal parts of) the asymptotic state distribution $x$, where
 $$x = \sum_{t=0}^\infty  v^T A^t = v^T \sum_{t=0}^\infty A^t$$
