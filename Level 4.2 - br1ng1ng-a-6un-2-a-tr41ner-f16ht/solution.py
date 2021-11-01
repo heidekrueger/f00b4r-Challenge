@@ -1,5 +1,5 @@
 import math
-import fractions
+from collections import defaultdict
 
 def solution(dimensions, your_position, trainer_position, distance):
     """Returns the unique number of directions that you can shoot such that you will
@@ -15,11 +15,24 @@ def solution(dimensions, your_position, trainer_position, distance):
         n_directions (int): Unique number of directions in which a shot will hit the bunny trainer."""
     
     space = Space(dimensions, your_position, trainer_position)
+    points_of_interest = space.get_points_of_interest(distance)
+    
+    # arrange the points of interest by their angle and distance
+    # we want a dictionary of format {angle : distance : type of point} 
 
-    all_dirs = get_directions(distance)
-    trainer_hitting_dirs = {d for d in all_dirs if space.target(d, distance) == 'trainer'}
-    #print trainer_hitting_dirs
-    return len(trainer_hitting_dirs)
+    directions = defaultdict(lambda: dict())
+    for p, (what, distance) in points_of_interest.items():
+        directions[space.your_position.angle(p)][distance] = what, p
+        
+    n_trainer_hitting_directions = 0
+    for angle, point_dict in directions.items():
+        # check if the direction is proper and the first thing being 
+        # hit in this direction is a trainer:
+        if angle is not None and point_dict[min(point_dict.keys())][0] == "trainer":
+            #print point_dict[min(point_dict.keys())][1]
+            n_trainer_hitting_directions += 1
+            
+    return n_trainer_hitting_directions
 
 class Space():
     """Represents the vector space describing the travel of bullet half-rays through
@@ -40,21 +53,55 @@ class Space():
         self.your_position = Point(*your_position)
         self.trainer_position = Point(*trainer_position)
 
-    def target(self, direction, max_distance):
-        position = self.your_position
+    def get_points_of_interest(self, max_distance):
+        """Generates all 'points of interest' in the space that are a maximum of `max_distance` from
+        self.your position. A point of interest is any Point that corresponds to your_position or
+        trainer_position in the room.
         
-        while max_distance >= direction.step_length:
-            position += direction
-            room_position = position.get_room_coordinates(self)
-            max_distance -= direction.step_length
+        To do so, we first populate a 'large enough' rectangle in the first quadrant with all such points,
+        then use symmetry to populate the other quadrants before filtering these candidate points on the 
+        circle of radius max_distance around `self.your_position`.
 
-            if room_position == self.your_position:
-                return "yourself"
-            elif room_position == self.trainer_position:
-                return "trainer"
-        
-        # nothing hit after max distance
-        return "nothing"
+        Returns:
+            points_of_interst: Dict[Point, Tuple[String, float]] indicating the type and distance 
+                to `your_position` of a point of interest
+        """
+
+        ## we'll populate the first quadrant, then use symmetry for the other quadrants.
+        ## determine the number of rooms needed in x and y directions
+        # worst case: your_position is at the very right of the room and point is max_distance to its right,
+        # then it is in the (math.ceil(max_distance / self.X))th room to the right of your_position.X, i.e. in room
+        n_rooms_x = int(max_distance / self.X) + 2
+        n_rooms_y = int(max_distance / self.Y) + 2
+
+        candidates = dict()
+        for room_x in range(n_rooms_x):
+            for room_y in range(n_rooms_y):
+                yourself_x = room_x * self.X + self.your_position.x if not room_x % 2 \
+                    else (room_x + 1) * self.X - self.your_position.x
+                yourself_y = room_y * self.Y + self.your_position.y if not room_y % 2 \
+                    else (room_y + 1) * self.Y - self.your_position.y
+                candidates[Point(yourself_x, yourself_y)] = "yourself"
+
+                trainer_x = room_x * self.X + self.trainer_position.x if not room_x % 2 \
+                    else (room_x + 1) * self.X - self.trainer_position.x
+                trainer_y = room_y * self.Y + self.trainer_position.y if not room_y % 2 \
+                    else (room_y + 1) * self.Y - self.trainer_position.y
+                candidates[Point(trainer_x, trainer_y)] = "trainer"
+
+        # mirror into other quadrants
+        for p in candidates.keys():
+            candidates[Point( p.x, -p.y)] = candidates[p]
+            candidates[Point(-p.x,  p.y)] = candidates[p]
+            candidates[Point(-p.x, -p.y)] = candidates[p]
+
+        # filter by distance
+        pois = dict()
+        for p in candidates.keys():
+            d = self.your_position.distance(p)
+            if d <= max_distance:
+                pois[p] = (candidates[p], d)
+        return pois
 
 class Point(tuple):
     """A point in the vector space"""
@@ -69,79 +116,34 @@ class Point(tuple):
     def y(self):
         return self[1]
 
-    def get_room_coordinates(self, space):
-        """Reduces coordinates x,y in ray-space to coordinates x,y in the room.
-        
-        We have
-        x (equiv) x + 2*X
-        """
-        # are we in an "ascending" or descending part of the space?
-        desc_x = (self.x // space.X) % 2 # 0 if ascending, 1 if descending
-        desc_y = (self.y // space.Y) % 2
-        
-        x = space.X - self.x % space.X if desc_x else self.x % space.X
-        y = space.Y - self.y % space.Y if desc_y else self.y % space.Y
-
-        return Point(x, y)
-
     def __add__(self, vector):
         return Point(self.x + vector.x, self.y + vector.y)
 
+    def __neg__(self):
+        return Point(-self.x, -self.y)
 
-class Direction(tuple):
-    def __new__(self, x, y):
-        if x==0 and y>0:
-            y = 1
-        if y==0 and x>0:
-            x = 1
-        gcd = abs(fractions.gcd(x,y)) if x>0 and y>0 else 1
-        return tuple.__new__(Direction, (x/gcd, y/gcd))
+    def __sub__(self, vector):
+        return self + (-vector)
 
-    @property
-    def x(self):
-        return self[0]
-    
-    @property
-    def y(self):
-        return self[1]
+    def __abs__(self):
+        """The Euclidean length of self as a vector"""
+        return math.sqrt(self.x**2 + self.y**2)
 
-    @property
-    def step_length(self):
-        """The minimum vector length in this direction that constitutes a lattice step."""
-        return math.sqrt(self.x ** 2 + self.y ** 2)
+    def angle(self, target):
+        """Return the orientation (angle) of the vector from self to target
+        in radians."""
+        if target == self:
+            return None
+        v = target - self
+        return math.atan2(v.y, v.x)
 
-    def get_symmetries(self):
-        """Returns the set of all eight symmetries of self along the horizontal, vertical and
-        diagonal mirror axes of the circle"""
-        return {Direction(x,y) for x,y in zip(
-            [self.x, self.x,-self.x,-self.x, self.y, self.y,-self.y,-self.y],
-            [self.y,-self.y, self.y,-self.y, self.x,-self.x, self.x,-self.x]
-            )}
-
-def get_directions(max_distance):
-    """Returns all unique direction vectors (x,y) that contain an integral
-    lattice step with no more than max_distance.
-
-    To do so, we scan the lattice points within a 45 degree circle segment,
-    to find valid directions, reduce those that are linearly dependent,
-    then add the 8 existing symmetries across the circle.
-    """
-
-    initial_directions = set()
-    for x in range(int(max_distance) + 1):
-        # we need x**2 + y**2 <= max_distance**2
-        for y in range(int(math.sqrt(max_distance ** 2 - x**2)) + 1):
-            ## there's room for optimization here! Can we skip y that aren't coprime to x?
-            initial_directions.add(Direction(x,y))
-            
-    directions = set()
-    for d in initial_directions:
-        directions.update(d.get_symmetries())
-    return directions
+    def distance(self, other):
+        """The distance between self and an `other` Point"""
+        return abs(self - other)
 
 
 
-print solution([3,2], [1,1], [2,1], 4)
+print(solution([3,2], [1,1], [2,1], 4))
 
 
-print solution([300,275], [150,150], [185,100], 500)
+print(solution([300,275], [150,150], [185,100], 500))
