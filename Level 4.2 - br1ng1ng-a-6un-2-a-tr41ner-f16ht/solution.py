@@ -1,3 +1,18 @@
+"""
+Solution to bringing-a-gun-to-a-trainer-fight.
+
+The basic outline is as follows: 
+* We first construct a 2d-vector space in which straight lines correspond to
+  the possible paths of bullets. To do so, we need to essentially mirror and
+  concatenate the room indefinitely.
+* We then determine all possible positions of all potential targets (i.e. yourself or the trainer)
+  within the maximum distance from the initial position. The total number of these potential
+  targets is bounded by 2*[max_distance / (room_dimensions) **2], i.e. quadratic in the problem
+  size.
+* With this _finite_ number of potential targets, we can cheaply enumerate their angles from the initial
+  position and check which target will be hit first in all relevant directions.
+"""
+
 import math
 from collections import defaultdict
 
@@ -15,37 +30,43 @@ def solution(dimensions, your_position, trainer_position, distance):
         n_directions (int): Unique number of directions in which a shot will hit the bunny trainer."""
     
     space = Space(dimensions, your_position, trainer_position)
-    points_of_interest = space.get_points_of_interest(distance)
+    potential_targets = space.get_potential_targets(distance)
     
-    # arrange the points of interest by their angle and distance
-    # we want a dictionary of format {angle : distance : type of point} 
+    # arrange the potential_targets by their angle and distance from your_position
+    # we want a dictionary of format {angle : {distance : type of target}},
+    # so that we can check the first target in each direction.
 
     directions = defaultdict(lambda: dict())
-    for p, (what, distance) in points_of_interest.items():
-        directions[space.your_position.angle(p)][distance] = what, p
-        
-    n_trainer_hitting_directions = 0
-    for angle, point_dict in directions.items():
-        # check if the direction is proper and the first thing being 
-        # hit in this direction is a trainer:
-        if angle is not None and point_dict[min(point_dict.keys())][0] == "trainer":
-            #print point_dict[min(point_dict.keys())][1]
-            n_trainer_hitting_directions += 1
-            
-    return n_trainer_hitting_directions
+    for position, (target, distance) in potential_targets.items():
+        directions[space.your_position.angle(position)][distance] = target
+    
+    # get those directions where the first thing being hit is a trainer
+    trainer_hitting_directions = {
+        angle for angle, targets_dict in directions.items()
+        if targets_dict[min(targets_dict.keys())] == "trainer"
+    }
+
+    return len(trainer_hitting_directions)
 
 class Space():
-    """Represents the vector space describing the travel of bullet half-rays through
-    the room.
-                        dim_y-----------|-----------------|
-                        |xxxxxxxxxxxxxxx|                 |
-                        |xxxxxxxxxxxxxxx|                 |
-                        |xxxxxxxxxxxxxxx|                 |
-    --------------------0-------------dim_x--------2*dim_x <=> 0
-                        |               |                 |
-                        |               |                 |
-                        |               |                 |
-                -dim_y == dim_y--------------------------------
+    """Represents a 2-dimensional Euclidean space equipped with utilities
+    that describes the travel of half-rays through the room. 
+
+    When we mirror the room at it's walls in both x- and y- directions
+    indefinitely, we achieve a 2d-vector space in which the travel of the 
+    bullet is described by a straight line.
+
+           |             |
+    -------|-----------dim_y-------------|-----------------|-----
+           |             |xxxxxxxxxxxxxxx|                 |
+           | ...         |xxxxxxxxxxxxxxx|                 |
+           |             |xxxxxxxxxxxxxxx|                 |
+    -------|-------------0-------------dim_x--------2*dim_x <=> 0--
+           |             |               |                 |
+           | ...         |               |                 |
+           |             |               |                 |
+           |------(-dim_y) <=> dim_y-----|-----------------|-------
+           |             |
     """
     def __init__(self, dimensions, your_position, trainer_position):
         self.X = dimensions[0] # room X length
@@ -53,21 +74,25 @@ class Space():
         self.your_position = Point(*your_position)
         self.trainer_position = Point(*trainer_position)
 
-    def get_points_of_interest(self, max_distance):
-        """Generates all 'points of interest' in the space that are a maximum of `max_distance` from
-        self.your position. A point of interest is any Point that corresponds to your_position or
-        trainer_position in the room.
+    def get_potential_targets(self, max_distance):
+        """Generates all potential targets of a bullet  in the space that are at 
+        a maximum of `max_distance` from self.your position. By potential target 
+        we mean any non-empty Point, i.e. one corresponding to`your_position` or
+        `trainer_position` in the room.
         
-        To do so, we first populate a 'large enough' rectangle in the first quadrant with all such points,
-        then use symmetry to populate the other quadrants before filtering these candidate points on the 
+        To do so, we first populate a 'large enough' rectangle in the first quadrant
+        with all such points, then use symmetry (x- and y-axes are always walls of the room)
+        to populate the other quadrants before filtering these candidate points on the 
         circle of radius max_distance around `self.your_position`.
 
-        Returns:
-            points_of_interst: Dict[Point, Tuple[String, float]] indicating the type and distance 
-                to `your_position` of a point of interest
-        """
+        This method does NOT yet check, whether a potential target may be obstructed
+        by another.
 
-        ## we'll populate the first quadrant, then use symmetry for the other quadrants.
+        Returns:
+            targets: Dict[Point, Tuple[String, float]] indicating the type and distance 
+                to `your_position` of a point of interest.
+                Example: {Point(10,10): ("trainer", 40.0)}
+        """
         ## determine the number of rooms needed in x and y directions
         # worst case: your_position is at the very right of the room and point is max_distance to its right,
         # then it is in the (math.ceil(max_distance / self.X))th room to the right of your_position.X, i.e. in room
@@ -75,47 +100,47 @@ class Space():
         n_rooms_y = int(max_distance / self.Y) + 2
 
         candidates = dict()
+        # add trainer and yourself from each mirror image of the room in Q1 to the candidates
         for room_x in range(n_rooms_x):
             for room_y in range(n_rooms_y):
-                yourself_x = room_x * self.X + self.your_position.x if not room_x % 2 \
-                    else (room_x + 1) * self.X - self.your_position.x
-                yourself_y = room_y * self.Y + self.your_position.y if not room_y % 2 \
-                    else (room_y + 1) * self.Y - self.your_position.y
+                left_wall = room_x * self.X
+                bottom_wall = room_y * self.Y
+
+                # check if room is mirrored (in both dims), then determine 
+                # distance either from left or right (respectively, bottom or top) wall
+
+                yourself_x = left_wall + self.your_position.x if not room_x % 2 \
+                    else left_wall + self.X - self.your_position.x
+                yourself_y = bottom_wall + self.your_position.y if not room_y % 2 \
+                    else bottom_wall + self.Y - self.your_position.y
                 candidates[Point(yourself_x, yourself_y)] = "yourself"
 
-                trainer_x = room_x * self.X + self.trainer_position.x if not room_x % 2 \
-                    else (room_x + 1) * self.X - self.trainer_position.x
-                trainer_y = room_y * self.Y + self.trainer_position.y if not room_y % 2 \
-                    else (room_y + 1) * self.Y - self.trainer_position.y
+                trainer_x = left_wall + self.trainer_position.x if not room_x % 2 \
+                    else left_wall + self.X - self.trainer_position.x
+                trainer_y = bottom_wall + self.trainer_position.y if not room_y % 2 \
+                    else bottom_wall + self.Y - self.trainer_position.y
                 candidates[Point(trainer_x, trainer_y)] = "trainer"
 
-        # mirror into other quadrants
+        # mirror onto other quadrants
         for p in candidates.keys():
             candidates[Point( p.x, -p.y)] = candidates[p]
             candidates[Point(-p.x,  p.y)] = candidates[p]
             candidates[Point(-p.x, -p.y)] = candidates[p]
 
         # filter by distance
-        pois = dict()
+        potential_targets = dict()
         for p in candidates.keys():
             d = self.your_position.distance(p)
             if d <= max_distance:
-                pois[p] = (candidates[p], d)
-        return pois
+                potential_targets[p] = (candidates[p], d)
+        return potential_targets
 
 class Point(tuple):
-    """A point in the vector space"""
+    """Represents a point in 2-dimensional Euclidean vector space and
+    some of its relevant operations."""
     def __new__(self, x, y):
         return tuple.__new__(Point, (x,y))
-
-    @property
-    def x(self):
-        return self[0]
     
-    @property
-    def y(self):
-        return self[1]
-
     def __add__(self, vector):
         return Point(self.x + vector.x, self.y + vector.y)
 
@@ -129,8 +154,16 @@ class Point(tuple):
         """The Euclidean length of self as a vector"""
         return math.sqrt(self.x**2 + self.y**2)
 
+    @property
+    def x(self):
+        return self[0]
+    
+    @property
+    def y(self):
+        return self[1]
+
     def angle(self, target):
-        """Return the orientation (angle) of the vector from self to target
+        """Returns the orientation (angle) of the vector from self to target
         in radians."""
         if target == self:
             return None
@@ -138,12 +171,13 @@ class Point(tuple):
         return math.atan2(v.y, v.x)
 
     def distance(self, other):
-        """The distance between self and an `other` Point"""
+        """The Euclidean distance between self and an `other` Point"""
         return abs(self - other)
 
+##################### Public Test Cases ###################
 
+#print(solution([3,2], [1,1], [2,1], 4))
+## --> 7
 
-print(solution([3,2], [1,1], [2,1], 4))
-
-
-print(solution([300,275], [150,150], [185,100], 500))
+##print(solution([300,275], [150,150], [185,100], 500))
+## --> 9

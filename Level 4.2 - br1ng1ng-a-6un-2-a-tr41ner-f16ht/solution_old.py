@@ -1,3 +1,23 @@
+"""
+My initial attempt to solve this level -- which turns out is not efficient enough.
+
+The idea was the following:
+* From the initial point, determine all unique directions for which any points of the 
+  integral lattice can be hit within max_distance.
+  There will be a quadratic number of such directions.
+* Next, travel along each direction until a target is hit or the max_distance is 
+  reached without hitting anything. Count, if a trainer is hit.
+  (This requires a linear number of iterations determined by the max. distance)
+
+In total, this attempt was cubic in max_distance, with probably fairly high coefficients,
+as MOST integral points in the square/circle where considered.
+
+While this approach should be technically correct, it was too inefficient for the challenge,
+passing only 4 or 5 of the test cases.
+
+Please see `solution.py` for an alternative attempt that runs in quadratic runtime.
+"""
+
 import math
 import fractions
 
@@ -139,9 +159,10 @@ def get_directions(max_distance):
         directions.update(d.get_symmetries())
     return directions
 
+##################### Public Test Cases ###################
 
+#print(solution([3,2], [1,1], [2,1], 4))
+## --> 7
 
-print(solution([3,2], [1,1], [2,1], 4))
-
-
-print(solution([300,275], [150,150], [185,100], 500))
+##print(solution([300,275], [150,150], [185,100], 500))
+## --> 9
